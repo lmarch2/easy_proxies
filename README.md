@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **多协议支持**: VLESS、Hysteria2、Shadowsocks、Trojan
+- **多协议支持**: VMess、VLESS、Hysteria2、Shadowsocks、Trojan
 - **多种传输层**: TCP、WebSocket、HTTP/2、gRPC、HTTPUpgrade
 - **节点池模式**: 自动故障转移、负载均衡
 - **多端口模式**: 每个节点独立监听端口
@@ -189,10 +189,29 @@ nodes:
 
 | 协议 | URI 格式 | 特性 |
 |------|----------|------|
+| VMess | `vmess://` | WebSocket、HTTP/2、gRPC、TLS |
 | VLESS | `vless://` | Reality、XTLS-Vision、多传输层 |
 | Hysteria2 | `hysteria2://` | 带宽控制、混淆 |
 | Shadowsocks | `ss://` | 多加密方式 |
 | Trojan | `trojan://` | TLS、多传输层 |
+
+### VMess 参数
+
+VMess 支持两种 URI 格式：
+
+**格式一：Base64 JSON（标准格式）**
+```
+vmess://base64({"v":"2","ps":"名称","add":"server","port":443,"id":"uuid","aid":0,"scy":"auto","net":"ws","type":"","host":"example.com","path":"/path","tls":"tls","sni":"example.com"})
+```
+
+**格式二：URL 格式**
+```
+vmess://uuid@server:port?encryption=auto&security=tls&sni=example.com&type=ws&host=example.com&path=/path#名称
+```
+
+- `net/type`: tcp, ws, h2, grpc
+- `tls/security`: tls 或空
+- `scy/encryption`: auto, aes-128-gcm, chacha20-poly1305 等
 
 ### VLESS 参数
 
