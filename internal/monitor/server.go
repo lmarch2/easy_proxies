@@ -476,12 +476,18 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleExport 导出所有可用代理池节点的 HTTP 代理 URI，每行一个
+// handleExport 导出所有可用代理池节点的代理 URI，每行一个
+// 支持 ?format=http (默认) 或 ?format=socks5 或 ?format=all
 // 在 hybrid 模式下，只导出 multi-port 格式（每节点独立端口）
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "http"
 	}
 
 	// 只导出初始检查通过的可用节点
@@ -503,15 +509,20 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		var proxyURI string
+		var auth string
 		if s.cfg.ProxyUsername != "" && s.cfg.ProxyPassword != "" {
-			proxyURI = fmt.Sprintf("http://%s:%s@%s:%d",
-				s.cfg.ProxyUsername, s.cfg.ProxyPassword,
-				listenAddr, snap.Port)
-		} else {
-			proxyURI = fmt.Sprintf("http://%s:%d", listenAddr, snap.Port)
+			auth = fmt.Sprintf("%s:%s@", s.cfg.ProxyUsername, s.cfg.ProxyPassword)
 		}
-		lines = append(lines, proxyURI)
+
+		switch format {
+		case "socks5", "socks":
+			lines = append(lines, fmt.Sprintf("socks5://%s%s:%d", auth, listenAddr, snap.Port))
+		case "all":
+			lines = append(lines, fmt.Sprintf("http://%s%s:%d", auth, listenAddr, snap.Port))
+			lines = append(lines, fmt.Sprintf("socks5://%s%s:%d", auth, listenAddr, snap.Port))
+		default: // http
+			lines = append(lines, fmt.Sprintf("http://%s%s:%d", auth, listenAddr, snap.Port))
+		}
 	}
 
 	// 返回纯文本，每行一个 URI
