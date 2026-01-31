@@ -23,10 +23,13 @@ type IPApiResponse struct {
 func (m *Manager) ProbePoolViaProxy(timeout time.Duration) (bool, string, time.Duration, error) {
 	start := time.Now()
 
-	proxyURLStr := "http://lmarch2:LYFnb@@@localhost:2323"
-	proxyURL, err := url.Parse(proxyURLStr)
-	if err != nil {
-		return false, "", 0, fmt.Errorf("parse proxy URL failed: %w", err)
+	proxyURL := &url.URL{
+		Scheme: "http",
+		User:   url.UserPassword(m.cfg.ProxyUsername, m.cfg.ProxyPassword),
+		Host:   "localhost:2323",
+	}
+	if proxyURL.User == nil {
+		return false, "", 0, fmt.Errorf("proxy credentials not configured")
 	}
 
 	client := &http.Client{
