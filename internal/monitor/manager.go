@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -190,74 +189,64 @@ func (m *Manager) StartPeriodicHealthCheck(interval, timeout time.Duration) {
 // probeAllNodes checks all registered nodes concurrently.
 func (m *Manager) probeAllNodes(timeout time.Duration) {
 	m.mu.RLock()
-	entries := make([]*entry, 0, len(m.nodes))
-	for _, e := range m.nodes {
-		entries = append(entries, e)
-	}
+	nodeCount := len(m.nodes)
 	m.mu.RUnlock()
 
-	if len(entries) == 0 {
+	if nodeCount == 0 {
 		return
 	}
 
 	if m.logger != nil {
-		m.logger.Info("starting health check for ", len(entries), " nodes")
+		m.logger.Info("starting health check via proxy pool (localhost:2323)")
 	}
 
-	workerLimit := runtime.NumCPU() * 2
-	if workerLimit < 8 {
-		workerLimit = 8
-	}
-	sem := make(chan struct{}, workerLimit)
-	var wg sync.WaitGroup
-	var availableCount atomic.Int32
-	var failedCount atomic.Int32
+	success, location, latency, err := m.ProbePoolViaProxy(timeout)
 
-	for _, e := range entries {
-		e.mu.RLock()
-		probeFn := e.probe
-		tag := e.info.Tag
-		e.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-		if probeFn == nil {
-			continue
+	if success {
+		if m.logger != nil {
+			m.logger.Info("proxy pool health check succeeded: ", location, " (", latency.String(), ")")
 		}
-
-		sem <- struct{}{}
-		wg.Add(1)
-		go func(entry *entry, probe probeFunc, tag string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			ctx, cancel := context.WithTimeout(m.ctx, timeout)
-			latency, err := probe(ctx)
-			cancel()
-
+		for _, entry := range m.nodes {
+			entry.mu.Lock()
+			entry.lastOK = time.Now()
+			entry.lastProbe = latency
+			entry.available = true
+			entry.initialCheckDone = true
+			entry.mu.Unlock()
+		}
+	} else {
+		if m.logger != nil {
+			m.logger.Warn("proxy pool health check failed: ", err)
+		}
+		for _, entry := range m.nodes {
 			entry.mu.Lock()
 			if err != nil {
-				failedCount.Add(1)
 				entry.lastError = err.Error()
-				entry.lastFail = time.Now()
-				entry.available = false
-				entry.initialCheckDone = true
-			} else {
-				availableCount.Add(1)
-				entry.lastOK = time.Now()
-				entry.lastProbe = latency
-				entry.available = true
-				entry.initialCheckDone = true
 			}
+			entry.lastFail = time.Now()
+			entry.available = false
+			entry.initialCheckDone = true
 			entry.mu.Unlock()
-
-			if err != nil && m.logger != nil {
-				m.logger.Warn("probe failed for ", tag, ": ", err)
-			}
-		}(e, probeFn, tag)
+		}
 	}
-	wg.Wait()
+
+	var availableCount int32
+	var failedCount int32
+	for _, entry := range m.nodes {
+		entry.mu.RLock()
+		if entry.available {
+			availableCount++
+		} else {
+			failedCount++
+		}
+		entry.mu.RUnlock()
+	}
 
 	if m.logger != nil {
-		m.logger.Info("health check completed: ", availableCount.Load(), " available, ", failedCount.Load(), " failed")
+		m.logger.Info("health check completed: ", availableCount, " available, ", failedCount, " failed")
 	}
 }
 
