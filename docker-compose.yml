@@ -1,8 +1,13 @@
 services:
   easy-proxies:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # 选项 1: 使用预构建镜像（推荐 - 从 GitHub Container Registry 拉取）
+    image: ghcr.io/lmarch2/easy_proxies:latest
+    
+    # 选项 2: 本地构建（如需修改代码后使用）
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    
     container_name: easy-proxies
     restart: unless-stopped
     network_mode: host
